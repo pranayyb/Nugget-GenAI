@@ -46,10 +46,10 @@ User (Chat Input)
         ↓
 [ Agent Executor (LangChain ReAct Agent) ]
         ↓
-┌────────────────────────────┬────────────────────────────────────┐
+┌─────────────────────────────┬────────────────────────────────────┐
 │    Tool 1: RAG Retrieval    │     Tool 2: Wikipedia Search       │
 │ (ChromaDB + HuggingFace Emb)│  (External fallback knowledge)     │
-└────────────────────────────┴────────────────────────────────────┘
+└─────────────────────────────┴────────────────────────────────────┘
         ↓
 [ Groq LLM (LLaMA 3.3-70B Versatile) ]
         ↓
@@ -150,7 +150,5 @@ streamlit run main.py
 ## License
 
 [MIT License](LICENSE)
-
----
 
 # Happy Dining with Nugget AI Assistant!
