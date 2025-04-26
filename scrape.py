@@ -1,259 +1,342 @@
 import requests
 from bs4 import BeautifulSoup
-import time
 import json
+import time
+import re
 
-# List of restaurants with name and URLs to scrape
-restaurants_info = [
-    {
-        "name": "Haji's",
-        "site": "https://www.hajislucknow.com",  # base URL for reference
-        "pages": {
-            "contact": "https://www.hajislucknow.com/contact",
-            "menu": "https://www.hajislucknow.com/menus",
-        },
-    },
-    {
-        "name": "Punjab Grill",
-        "site": "https://www.punjabgrill.in",
-        "pages": {"menu": "https://www.punjabgrill.in/punjab-grill-menu/"},
-    },
-    {
-        "name": "Flavours (Hometel Alambagh)",
-        "site": "https://www.sarovarhotels.com",
-        "pages": {
-            "dining": "https://www.sarovarhotels.com/hometel-alambagh-lucknow/dining.html"
-        },
-    },
-    {
-        "name": "Pizza Hut (Hazratganj)",
-        "site": "https://restaurants.pizzahut.co.in",
-        "pages": {
-            "branch": "https://restaurants.pizzahut.co.in/pizza-hut-hazratganj-pizza-restaurant-hazratganj-lucknow-1258/Menu"
-        },
-    },
-    {
-        "name": "Biryani Blues (Phoenix Mall)",
-        "site": "https://restaurants.biryaniblues.com",
-        "pages": {
-            "outlet": "https://restaurants.biryaniblues.com/biryani-blues-restaurants-lucknow-tehsil-lucknow-368922/Home"
-        },
-    },
-    {
-        "name": "Kitchen: The Food Stop",
-        "site": "https://kitchentfs.com",
-        "pages": {"home": "https://kitchentfs.com/"},
-    },
-]
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; ScraperBot/1.0; +http://example.com/bot)"
+}
+DELAY = 1
 
-headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"}
-scraped_data = []
 
-for rest in restaurants_info:
+def scrape_tunday_kababi():
     data = {
-        "name": rest["name"],
-        "address": None,
-        "hours": None,
-        "phone": None,
-        "email": None,
+        "name": "Tunday Kababi (Lucknow)",
+        "locations": [],
         "menu": [],
-        "notes": None,
+        "hours": None,
+        "contact": {},
+        "special": [],
     }
-    pages = rest.get("pages", {})
+    try:
+        time.sleep(DELAY)
+        res = requests.get(
+            "https://www.tundaykababi.com/contact-us", headers=HEADERS, timeout=10
+        )
+        soup = BeautifulSoup(res.text, "html.parser")
+        contact_info = soup.find("h2", string=re.compile(r"Tunday Kababi"))
+        if contact_info:
+            addr = contact_info.find_next("p").get_text(separator=" ").strip()
+            phones = contact_info.find_next("p").find_next("p").get_text().strip()
+            data["locations"].append(addr)
+            data["contact"]["phone"] = phones.split("|")[0].strip()
+        menu_url = "https://www.tundaykababi.com/shop/kebabs"
+        time.sleep(DELAY)
+        res2 = requests.get(menu_url, headers=HEADERS, timeout=10)
+        soup2 = BeautifulSoup(res2.text, "html.parser")
+        items = soup2.select("h3")
+        for item in items:
+            name = item.get_text(strip=True)
+            if name and name not in data["menu"]:
+                data["menu"].append({"name": name, "description": None, "price": None})
+    except Exception as e:
+        print(f"Tunday Kababi scrape error: {e}")
+    return data
 
-    # Scrape Haji's contact page for address, hours, contact
-    if rest["name"] == "Haji's":
-        try:
-            res = requests.get(pages["contact"], headers=headers, timeout=10)
-            res.raise_for_status()
-            soup = BeautifulSoup(res.text, "html.parser")
-            # Extract address text
-            addr = soup.find(text="Haider Market,")
-            if addr:
-                data["address"] = addr.strip()
-            # Opening hours are in a table, get all days
-            hours_tags = soup.select("div:contains('-')")  # simplistic selector
-            hours_list = [
-                tag.get_text(separator=" ").strip()
-                for tag in hours_tags
-                if "12:00" in tag.text
-            ]
-            if hours_list:
-                data["hours"] = "; ".join(hours_list)
-            # Phone and email
-            phone = soup.find(string=lambda t: t and t.strip().startswith("(+91"))
-            email = soup.find(string=lambda t: t and "@" in t)
-            if phone:
-                data["phone"] = phone.strip()
-            if email:
-                data["email"] = email.strip()
-        except Exception as e:
-            print(f"Failed to scrape Haji's contact page: {e}")
-        time.sleep(1)
-        # Scrape Haji's menu page
-        try:
-            res = requests.get(pages["menu"], headers=headers, timeout=10)
-            res.raise_for_status()
-            soup = BeautifulSoup(res.text, "html.parser")
-            # Find categories and items
-            categories = soup.find_all(["h2", "h3"])
-            current_section = None
-            for tag in categories:
-                if tag.name == "h2":  # category
-                    current_section = tag.get_text().strip()
-                elif tag.name == "h3":  # item
-                    item_name = tag.get_text().strip()
-                    # find next sibling text for price
-                    price_tag = tag.find_next(
-                        string=lambda t: t and t.strip().startswith("₹")
-                    )
-                    price = price_tag.strip() if price_tag else None
-                    # Add item to menu list
-                    data["menu"].append(
-                        {
-                            "section": current_section,
-                            "item": item_name,
-                            "description": None,
-                            "price": price,
-                        }
-                    )
-        except Exception as e:
-            print(f"Failed to scrape Haji's menu: {e}")
-        time.sleep(1)
 
-    # Scrape Punjab Grill menu page
-    elif rest["name"].startswith("Punjab Grill"):
-        try:
-            res = requests.get(pages["menu"], headers=headers, timeout=10)
-            res.raise_for_status()
-            soup = BeautifulSoup(res.text, "html.parser")
-            # Items are listed under headings; find all menu items
-            # Each item appears as a list bullet or similar
-            ul = soup.find_all("li")
-            for li in ul:
-                text = li.get_text(separator=" ").strip()
-                if text:
-                    parts = text.split("₹")
-                    if len(parts) >= 2:
-                        item_desc = parts[0].strip()
-                        price = "₹" + parts[1].strip()
-                        # In Punjab Grill menu, each item includes name and description
-                        name_desc = item_desc.split(None, 1)
-                        item_name = name_desc[0].strip()
-                        desc = name_desc[1].strip() if len(name_desc) > 1 else ""
+def scrape_kfc():
+    data = {
+        "name": "KFC (Shahjahan Road, Lucknow)",
+        "locations": [],
+        "menu": [],
+        "hours": None,
+        "contact": {},
+        "special": [],
+    }
+    try:
+        time.sleep(DELAY)
+        res = requests.get(
+            "https://restaurants.kfc.co.in/kfc-shahjanaf-road-restaurants-shahjanaf-road-lucknow-34993/Home",
+            headers=HEADERS,
+            timeout=10,
+        )
+        soup = BeautifulSoup(res.text, "html.parser")
+
+        loc = soup.find("h1")
+        if loc:
+            addr = loc.find_next("ul").get_text(" ", strip=True)
+            data["locations"].append(addr)
+
+        phone = soup.find(string=re.compile(r"\+91"))
+        if phone:
+            data["contact"]["phone"] = phone.strip()
+
+        hours = soup.find(string=re.compile(r"Open until"))
+        if hours:
+            data["hours"] = hours.strip()
+        card_bodies = soup.find_all("div", class_="card-body")
+        if not card_bodies:
+            card_bodies = soup.find_all("div", id="card-body")
+
+        if card_bodies:
+            for card in card_bodies:
+                item_name_elem = card.find(
+                    ["h5", "h4", "h3", "div", "span"],
+                    class_=re.compile(r"item-name|title|menu-item-name"),
+                )
+                item_price_elem = card.find(
+                    ["span", "div", "p"], class_=re.compile(r"price|amount|cost")
+                )
+                if not item_name_elem or not item_price_elem:
+                    card_text = card.get_text()
+                    name_price_match = re.search(r"(.*?)(?:[\s-]+)(₹\s*\d+)", card_text)
+
+                    if name_price_match:
+                        name = name_price_match.group(1).strip()
+                        price = name_price_match.group(2).strip()
+                        if name and len(name) > 1:
+                            data["menu"].append(
+                                {"name": name, "description": None, "price": price}
+                            )
+                else:
+                    name = item_name_elem.get_text(strip=True)
+                    price = item_price_elem.get_text(strip=True)
+
+                    # Add to menu if name is not empty
+                    if name and len(name) > 1:
                         data["menu"].append(
-                            {
-                                "section": "Main Menu",
-                                "item": item_name,
-                                "description": desc,
-                                "price": price,
-                            }
+                            {"name": name, "description": None, "price": price}
                         )
-        except Exception as e:
-            print(f"Failed to scrape Punjab Grill: {e}")
-        time.sleep(1)
+        if not data["menu"]:
+            menu_section = soup.find(
+                "div", string=re.compile(r"KFC Menu in Shahjanaf Road")
+            )
+            if menu_section:
+                items = soup.find_all("li", text=re.compile(r"₹"))
+                for li in items:
+                    text = li.get_text(separator="|").split("|")
+                    if len(text) >= 2:
+                        name = text[0].strip()
+                        price = text[-1].strip()
+                        data["menu"].append(
+                            {"name": name, "description": None, "price": price}
+                        )
+        if not data["menu"]:
+            price_elements = soup.find_all(string=re.compile(r"₹\s*\d+"))
+            for price_elem in price_elements:
+                parent = price_elem.find_parent()
+                if parent:
+                    parent_text = parent.get_text()
+                    name_price_match = re.search(
+                        r"(.*?)(?:[\s-]+)(₹\s*\d+)", parent_text
+                    )
 
-    # Scrape Flavours restaurant page for address/hours
-    elif rest["name"].startswith("Flavours"):
-        try:
-            res = requests.get(pages["dining"], headers=headers, timeout=10)
-            res.raise_for_status()
-            soup = BeautifulSoup(res.text, "html.parser")
-            # Address and hours are clearly labeled on this page
-            address_tag = soup.find(string=lambda t: t and "Alambagh, Lucknow" in t)
-            hours_tag = soup.find(string=lambda t: t and t.strip().endswith("Hours"))
-            if address_tag:
-                data["address"] = address_tag.strip()
-            # The line with "24 Hours"
-            hours_val = soup.find(string=lambda t: t and "24 Hours" in t)
-            if hours_val:
-                data["hours"] = "24 Hours"
-            # Contact email/phone might be in same page
-            phone = soup.find(string=lambda t: t and "+91" in t)
-            email = soup.find(string=lambda t: t and "@sarovarhotels" in t)
+                    if name_price_match:
+                        name = name_price_match.group(1).strip()
+                        price = name_price_match.group(2).strip()
+
+                        if (
+                            name
+                            and len(name) > 1
+                            and not any(item["name"] == name for item in data["menu"])
+                        ):
+                            data["menu"].append(
+                                {"name": name, "description": None, "price": price}
+                            )
+    except Exception as e:
+        print(f"KFC scrape error: {e}")
+    # print(data)
+    return data
+
+
+def scrape_dominos():
+    """Scrape Domino's Pizza (Chowk, Lucknow) menu."""
+    data = {
+        "name": "Domino's Pizza (Chowk, Lucknow)",
+        "locations": [],
+        "menu": [],
+        "hours": None,
+        "contact": {},
+        "special": [],
+    }
+    try:
+        time.sleep(DELAY)
+        res = requests.get(
+            "https://www.dominos.co.in/store-location/lucknow/chowk-lucknow-uttar-pradesh",
+            headers=HEADERS,
+            timeout=10,
+        )
+        soup = BeautifulSoup(res.text, "html.parser")
+        # Location and contact
+        heading = soup.find("h3")
+        if heading:
+            address = heading.find_next("address")
+            phone = heading.find_next(string=re.compile(r"\d{10,}"))
+            if address:
+                data["locations"].append(address.get_text(" ", strip=True))
             if phone:
-                data["phone"] = phone.strip()
-            if email:
-                data["email"] = email.strip()
-        except Exception as e:
-            print(f"Failed to scrape Flavours page: {e}")
-        time.sleep(1)
+                data["contact"]["phone"] = phone.strip()
+        hours = soup.find("div", string=re.compile(r"Opening hours"))
+        if hours:
+            data["hours"] = hours.find_next("p").get_text(strip=True)
+        # Switch to menu tab
+        time.sleep(DELAY)
+        res2 = requests.get(
+            "https://www.dominos.co.in/store-location/lucknow/chowk-lucknow-uttar-pradesh/menu",
+            headers=HEADERS,
+            timeout=10,
+        )
+        soup2 = BeautifulSoup(res2.text, "html.parser")
+        sections = soup2.select("h3")
+        for h3 in sections:
+            name = h3.get_text(strip=True)
+            desc = h3.find_next("p")
+            desc_text = desc.get_text(strip=True) if desc else None
+            if name:
+                data["menu"].append(
+                    {"name": name, "description": desc_text, "price": None}
+                )
+    except Exception as e:
+        print(f"Domino's scrape error: {e}")
+    # print(data)
+    return data
 
-    # Scrape Pizza Hut branch page for address/contact
-    elif rest["name"].startswith("Pizza Hut"):
-        try:
-            res = requests.get(pages["branch"], headers=headers, timeout=10)
-            res.raise_for_status()
-            soup = BeautifulSoup(res.text, "html.parser")
-            # Find address by keyword "MG Marg"
-            addr_tag = soup.find(string=lambda t: t and "MG Marg" in t)
-            if addr_tag:
-                data["address"] = addr_tag.strip()
-            # Find phone number line
-            phone_tag = soup.find(
-                string=lambda t: t and t.strip().isdigit() and len(t.strip()) > 5
+
+def scrape_motimahal_delux():
+    data = {
+        "name": "Moti Mahal Delux (Lucknow)",
+        "locations": [],
+        "menu": [],
+        "hours": None,
+        "contact": {},
+        "special": [],
+    }
+    try:
+        time.sleep(DELAY)
+        res = requests.get(
+            "https://www.motimahaldelux.com/post/moti-mahal-lucknow",
+            headers=HEADERS,
+            timeout=10,
+        )
+        soup = BeautifulSoup(res.text, "html.parser")
+        addr_content = soup.find(string=re.compile(r"Address:"))
+        if addr_content:
+            parent = addr_content.find_parent()
+            address_text = parent.get_text()
+            address_match = re.search(
+                r"Address:(.*?)(?:Operating Hours|$)", address_text, re.DOTALL
             )
-            if phone_tag:
-                data["phone"] = phone_tag.strip()
-            # Hours may be under a tag
-            status_tag = soup.find(
-                string=lambda t: t and ("Open" in t or "Closed" in t)
+            if address_match:
+                address = address_match.group(1).strip()
+                data["locations"].append(address)
+        full_text = soup.get_text()
+        hours_match = re.search(
+            r"Operating Hours.*?Monday to Sunday:\s*(.*?PM)", full_text, re.DOTALL
+        )
+        if hours_match:
+            hours_time = hours_match.group(1).strip()
+            data["hours"] = "Monday to Sunday: " + hours_time
+        else:
+            hours_section = soup.find(
+                string=lambda text: text and "Operating Hours" in text
             )
-            if status_tag:
-                data["hours"] = status_tag.strip()
-        except Exception as e:
-            print(f"Failed to scrape Pizza Hut branch page: {e}")
-        time.sleep(1)
-
-    # Scrape Biryani Blues outlet page for address/hours
-    elif rest["name"].startswith("Biryani Blues"):
-        try:
-            res = requests.get(pages["outlet"], headers=headers, timeout=10)
-            res.raise_for_status()
-            soup = BeautifulSoup(res.text, "html.parser")
-            # Address line contains "Phoenix United Mall"
-            addr = soup.find(string=lambda t: t and "Phoenix United Mall" in t)
-            if addr:
-                data["address"] = addr.strip()
-            # Business hours listed under Business Hours section
-            bh = soup.find_all(
-                string=lambda t: t and "-" in t and t.strip().endswith("PM")
+            if hours_section:
+                parent_elem = hours_section.find_parent()
+                next_ul = parent_elem.find_next("ul")
+                if next_ul:
+                    hour_item = next_ul.find(string=re.compile(r"Monday to Sunday"))
+                    if hour_item:
+                        hours_text = hour_item.strip()
+                        data["hours"] = hours_text
+        menu_section = soup.find(string=re.compile(r"Menu Highlights"))
+        if menu_section:
+            menu_parent = menu_section.find_parent()
+            menu_list = menu_parent.find_next("ul")
+            if menu_list:
+                menu_items = menu_list.find_all("li")
+                for item in menu_items:
+                    item_text = item.get_text().strip()
+                    dish_match = re.search(r"(.*?):(.*)", item_text)
+                    if dish_match:
+                        dish_name = dish_match.group(1).strip()
+                        dish_desc = dish_match.group(2).strip()
+                        data["menu"].append(
+                            {"name": dish_name, "description": dish_desc, "price": None}
+                        )
+        special_section = soup.find(string=re.compile(r"Why Choose"))
+        if special_section:
+            special_parent = special_section.find_parent()
+            special_list = special_parent.find_next("ul")
+            if special_list:
+                special_items = special_list.find_all("li")
+                for item in special_items:
+                    special_text = item.get_text().strip()
+                    special_match = re.search(r"(.*?):(.*)", special_text)
+                    if special_match:
+                        special_feature = (
+                            special_match.group(1).strip()
+                            + ": "
+                            + special_match.group(2).strip()
+                        )
+                    else:
+                        special_feature = special_text
+                    data["special"].append(special_feature)
+        faq_section = soup.find(string=re.compile(r"Frequently Asked Questions"))
+        if faq_section:
+            private_events = soup.find(
+                string=re.compile(r"Can I book the restaurant for private events")
             )
-            hours_list = [t.strip() for t in bh if t.strip()]
-            if hours_list:
-                data["hours"] = "; ".join(hours_list)
-        except Exception as e:
-            print(f"Failed to scrape Biryani Blues outlet page: {e}")
-        time.sleep(1)
-
-    # Scrape Kitchen site footer for address/contact
-    elif rest["name"].startswith("Kitchen"):
-        try:
-            res = requests.get(pages["home"], headers=headers, timeout=10)
-            res.raise_for_status()
-            soup = BeautifulSoup(res.text, "html.parser")
-            addr = soup.find(string=lambda t: t and "Aravali Marg" in t)
-            phone = soup.find(string=lambda t: t and t.strip().startswith("0522"))
-            email = soup.find(string=lambda t: t and "@kitchentfs" in t)
-            if addr:
-                data["address"] = addr.strip()
-            if phone:
-                data["phone"] = phone.strip()
-            if email:
-                data["email"] = email.strip()
-        except Exception as e:
-            print(f"Failed to scrape Kitchen site: {e}")
-        time.sleep(1)
-
-    # Save the data for this restaurant (omit None fields)
-    # Remove empty fields
-    data = {k: v for k, v in data.items() if v}
-    scraped_data.append(data)
-
-# Write results to JSON file
-with open("restaurants_lucknow.json", "w", encoding="utf-8") as f:
-    json.dump(scraped_data, f, indent=2, ensure_ascii=False)
-
-print("Scraping complete. Data saved to restaurants_lucknow.json.")
+            if private_events:
+                parent = private_events.find_parent()
+                answer = parent.find_next(string=re.compile(r"A:"))
+                if answer:
+                    events_text = answer.find_parent().get_text()
+                    events_match = re.search(r"A:(.*)", events_text)
+                    if events_match:
+                        data["special"].append(
+                            "Private Events: " + events_match.group(1).strip()
+                        )
+                    else:
+                        events_info = re.search(
+                            r"Can I book.*?\n*.*?(Yes, we accept.*?)(?:\n|$)",
+                            full_text,
+                            re.DOTALL,
+                        )
+                        if events_info:
+                            data["special"].append(
+                                "Private Events: " + events_info.group(1).strip()
+                            )
+        if data["locations"]:
+            location_match = re.search(r"(Hazratganj, Lucknow)", data["locations"][0])
+            if location_match:
+                data["contact"]["location"] = location_match.group(1)
+            address_match = re.search(
+                r"(Moti Mahal Delux,.*?)(?:Operating Hours|$)",
+                " ".join(data["locations"]),
+                re.DOTALL,
+            )
+            if address_match:
+                data["contact"]["address"] = address_match.group(1).strip()
+    except Exception as e:
+        print(f"Moti Mahal Delux scrape error: {e}")
+    return data
 
 
+restaurants = []
+for fn in (
+    scrape_kfc,
+    scrape_dominos,
+    scrape_tunday_kababi,
+    scrape_motimahal_delux,
+):
+    try:
+        info = fn()
+        restaurants.append(info)
+    except Exception as ex:
+        print(f"Error scraping {fn.__name__}: {ex}")
+
+with open("lucknow_restaurants.json", "w", encoding="utf-8") as f:
+    json.dump(restaurants, f, indent=2, ensure_ascii=False)
+
+print("Scraping complete. Data saved to lucknow_restaurants.json.")
