@@ -1,13 +1,12 @@
 import os
 import sys
-import json
 import time
 import random
 import logging
 import warnings
 import traceback
-import streamlit as st
 from langchain import hub
+import streamlit as st
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_core.tools import Tool
@@ -23,6 +22,20 @@ from tenacity import (
     stop_after_attempt,
     retry_if_exception_type,
 )
+from utils import (
+    generate_fallback_response,
+    load_chat_history,
+    save_chat_history,
+)
+
+
+class RateLimitException(Exception):
+    pass
+
+
+class APIConnectionException(Exception):
+    pass
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,17 +46,18 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger("nugget_assistant")
-
 warnings.filterwarnings("ignore")
 load_dotenv()
 
 
-class RateLimitException(Exception):
-    pass
-
-
-class APIConnectionException(Exception):
-    pass
+class RateLimitAwareGroq(ChatGroq):
+    def __call__(self, *args, **kwargs):
+        try:
+            return call_groq_with_retry(super().__call__, *args, **kwargs)
+        except RateLimitException as e:
+            st.session_state.rate_limit_hits += 1
+            logger.error(f"Rate limit hit after retries: {str(e)}")
+            raise
 
 
 @retry(
@@ -101,10 +115,10 @@ with st.sidebar:
     if "user_name" not in st.session_state:
         st.session_state.user_name = ""
     sample_queries = [
-        "What Italian restaurants are nearby?",
-        "Tell me about vegan options at local cafes",
-        "What's the price range for sushi restaurants?",
-        "Best brunch spots open on weekends?",
+        "Which restaurants are have the best veg options in their menu?",
+        "Tell me about local restaurants with non-veg options.",
+        "What's the price range for KFC restaurant's dessert menu?",
+        "Compare the menus of restaurants Tunday Kababi and Moti Mahal.",
     ]
 
     for query in sample_queries:
@@ -118,7 +132,6 @@ with st.sidebar:
         st.success("Chat history cleared!")
         st.rerun()
 
-    # # Add a rate limit info box
     # st.sidebar.markdown("---")
     # st.sidebar.markdown("### API Status")
     # if "rate_limit_hits" not in st.session_state:
@@ -151,16 +164,6 @@ with chat_container:
             st.write(
                 f"Hello{welcome_name}! I'm your Nugget AI Assistant. How may I help you with your dining questions today?"
             )
-
-
-class RateLimitAwareGroq(ChatGroq):
-    def __call__(self, *args, **kwargs):
-        try:
-            return call_groq_with_retry(super().__call__, *args, **kwargs)
-        except RateLimitException as e:
-            st.session_state.rate_limit_hits += 1
-            logger.error(f"Rate limit hit after retries: {str(e)}")
-            raise
 
 
 def initialize_rag_system(groq_key, persist_dir, collection, model):
@@ -320,49 +323,9 @@ food_spinner_messages = [
 ]
 
 
-def save_chat_history():
-    """Save chat history to a file."""
-    try:
-        with open("chat_history.json", "w") as f:
-            json.dump(st.session_state.chat_history, f)
-        logger.info("Chat history saved successfully")
-    except Exception as e:
-        logger.error(f"Failed to save chat history: {str(e)}")
-
-
-def load_chat_history():
-    try:
-        if os.path.exists("chat_history.json"):
-            with open("chat_history.json", "r") as f:
-                st.session_state.chat_history = json.load(f)
-            logger.info("Chat history loaded successfully")
-    except Exception as e:
-        logger.error(f"Failed to load chat history: {str(e)}")
-        st.session_state.chat_history = []
-
-
 if "chat_history_loaded" not in st.session_state:
     load_chat_history()
     st.session_state.chat_history_loaded = True
-
-
-def generate_fallback_response(user_query):
-    generic_responses = [
-        "I'm having trouble connecting to my knowledge base right now. Could you try asking again in a moment?",
-        "It seems like we're experiencing some technical difficulties. Let me try to help with what I know: restaurants generally offer a variety of cuisines and price points. Could you provide more details about what you're looking for?",
-        "I apologize, but I'm having trouble accessing the restaurant database at the moment. Is there something specific about dining options you'd like to know?",
-        "We're experiencing a high volume of requests right now. Would you mind trying your question again in a few moments?",
-    ]
-    if any(word in user_query.lower() for word in ["italian", "pasta", "pizza"]):
-        return "I'm having trouble connecting to my knowledge base, but I can tell you're interested in Italian cuisine. Italian restaurants typically offer dishes like pasta, pizza, risotto, and many feature antipasti appetizers. Would you like me to try finding specific information once the connection is restored?"
-    if any(word in user_query.lower() for word in ["vegan", "vegetarian", "plant"]):
-        return "While I'm experiencing connection issues, I notice you're interested in plant-based options. Many restaurants now offer dedicated vegan/vegetarian menus or can modify dishes to accommodate dietary preferences. Would you like to know about specific plant-based dishes once I'm back online?"
-    if any(
-        word in user_query.lower()
-        for word in ["price", "expensive", "cheap", "cost", "budget"]
-    ):
-        return "I see you're asking about pricing. While I can't access specific restaurant prices right now due to connection issues, restaurants typically range from budget-friendly options to high-end dining experiences. I'd be happy to provide more specific information once the connection is restored."
-    return random.choice(generic_responses)
 
 
 if "sample_query" in st.session_state:
@@ -405,7 +368,7 @@ if user_query:
                 st.session_state.chat_history.append(
                     {"role": "assistant", "content": assistant_response}
                 )
-                save_chat_history()
+                # save_chat_history()
 
             except RateLimitException as e:
                 logger.error(f"Rate limit exceeded after retries: {str(e)}")

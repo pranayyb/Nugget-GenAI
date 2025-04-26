@@ -1,1 +1,4 @@
 .env
+chat_history.json
+nugget_assistant.log
+__pycache__
