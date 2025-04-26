@@ -116,7 +116,7 @@ with st.sidebar:
         st.session_state.user_name = ""
     sample_queries = [
         "Which restaurants are have the best veg options in their menu?",
-        "Tell me about local restaurants with non-veg options.",
+        "What are the timings for Tunday Kababi?",
         "What's the price range for KFC restaurant's dessert menu?",
         "Compare the menus of restaurants Tunday Kababi and Moti Mahal.",
     ]
