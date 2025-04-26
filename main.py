@@ -117,7 +117,7 @@ with st.sidebar:
     sample_queries = [
         "Which restaurants are have the best veg options in their menu?",
         "What are the timings for Tunday Kababi?",
-        "What's the price range for KFC restaurant's dessert menu?",
+        "What's the price range for Moti Mahal restaurant's dessert menu?",
         "Compare the menus of restaurants Tunday Kababi and Moti Mahal.",
     ]
 
