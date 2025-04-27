@@ -5,3 +5,4 @@ langchain_groq
 langchain_astradb
 sentence-transformers
 watchdog
+chromadb

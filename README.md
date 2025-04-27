@@ -3,6 +3,10 @@
 A RAG-powered intelligent chatbot that helps users ask specific questions about restaurant menus, cuisines, dietary options, prices, and more — with **real menu photos** attached for cross-checking maximum data accuracy!
 
 ---
+## Deployed Link : https://nugget.streamlit.app/
+## Video Link : https://youtu.be/rxVIyfE19U8
+---
+
 
 ## Problem Statement
 

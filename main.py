@@ -227,7 +227,7 @@ def initialize_rag_system(groq_key, persist_dir, collection, model):
             "and special offerings when available in the context. "
             "If users share dietary restrictions or preferences, remember these and tailor your recommendations accordingly. "
             "If the user shares their name, remember it and personalize your responses. "
-            "When information is not available in the context, acknowledge this and offer to help with related questions."
+            "Only when information is not available in the context, acknowledge this and offer to help with related questions."
             "\n\n"
             "{context}"
         )
