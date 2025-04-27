@@ -6,4 +6,3 @@ langchain_astradb
 sentence-transformers
 watchdog
 chromadb
-pysqlite3
